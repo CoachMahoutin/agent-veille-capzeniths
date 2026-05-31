@@ -36,6 +36,19 @@ const injectStyles = () => {
   document.head.appendChild(s);
 };
 
+// ── SYNC SUPABASE ────────────────────────────────────────────────
+const syncToSupabase = async (table, data, agent) => {
+  try {
+    await fetch('/api/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table, action: 'insert', data, agent }),
+    });
+  } catch (e) {
+    console.warn('Sync Supabase échouée:', e.message);
+  }
+};
+
 // ── LOGO ────────────────────────────────────────────────────────
 const Logo = ({ height = 32 }) => (
   <svg viewBox="0 0 210 60" height={height} style={{ display: "block" }} xmlns="http://www.w3.org/2000/svg">
@@ -154,7 +167,24 @@ Génère le rapport JSON structuré avec données chiffrées actuelles.`;
         .filter(Boolean)
         .join("");
 
-      setReport(JSON.parse(raw.replace(/```json|```/g, "").trim()));
+      const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      setReport(parsed);
+
+      // SYNC SUPABASE
+      const alertes = parsed.alertes || [];
+      const niveauMax = alertes.some(a => a.type === 'CRITIQUE') ? 'CRITIQUE'
+        : alertes.some(a => a.type === 'IMPORTANT') ? 'IMPORTANT' : 'INFO';
+      await syncToSupabase('veilles', {
+        type_veille:   form.type,
+        secteur:       secteurLabel || form.secteur,
+        periode:       periodeLabel || form.periode,
+        chiffres_cles: JSON.stringify(parsed.chiffres_cles || []),
+        alertes:       JSON.stringify(alertes),
+        tendances:     (parsed.tendances || []).join(' | '),
+        opportunites:  (parsed.opportunites_capzeniths || []).join(' | '),
+        niveau_alerte: niveauMax,
+      }, 'veille');
+
     } catch (e) {
       clearInterval(iv);
       setErr("Erreur lors de la recherche. Réessaie.");
@@ -219,8 +249,6 @@ ${(report.sources || []).join("\n")}`;
       </nav>
 
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "36px 20px 56px" }}>
-
-        {/* En-tête rapport */}
         <div className="czv-up" style={{ marginBottom: 28 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
             <div>
@@ -235,13 +263,11 @@ ${(report.sources || []).join("\n")}`;
           </div>
         </div>
 
-        {/* Synthèse */}
         <div className="czv-card czv-up1" style={{ padding: "22px 26px", marginBottom: 16, borderTop: "4px solid #F5A623" }}>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#B8A898", marginBottom: 10, textTransform: "uppercase" }}>Synthèse</div>
           <p style={{ margin: 0, fontSize: 15, color: "#2D1B4E", lineHeight: 1.85 }}>{report.synthese}</p>
         </div>
 
-        {/* Chiffres clés */}
         {(report.chiffres_cles || []).length > 0 && (
           <div className="czv-up2" style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#B8A898", marginBottom: 12, textTransform: "uppercase" }}>Chiffres clés</div>
@@ -260,7 +286,6 @@ ${(report.sources || []).join("\n")}`;
           </div>
         )}
 
-        {/* Alertes */}
         {(report.alertes || []).length > 0 && (
           <div className="czv-up3" style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#B8A898", marginBottom: 12, textTransform: "uppercase" }}>Alertes</div>
@@ -282,7 +307,6 @@ ${(report.sources || []).join("\n")}`;
           </div>
         )}
 
-        {/* Tendances + Opportunités */}
         <div className="czv-up4" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
           <div className="czv-card" style={{ padding: "20px 22px" }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "#B8A898", marginBottom: 12, textTransform: "uppercase" }}>Tendances</div>
@@ -302,7 +326,6 @@ ${(report.sources || []).join("\n")}`;
           </div>
         </div>
 
-        {/* Sources */}
         {(report.sources || []).length > 0 && (
           <div style={{ padding: "12px 16px", borderRadius: 10, background: "#FAFAF8", border: "1px solid rgba(45,10,62,.07)" }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", color: "#B8A898", marginBottom: 6, textTransform: "uppercase" }}>Sources</div>
@@ -341,8 +364,6 @@ ${(report.sources || []).join("\n")}`;
 
       <div style={{ maxWidth: 680, margin: "-26px auto 0", padding: "0 20px 56px", position: "relative", zIndex: 1 }}>
         <div className="czv-card czv-up3" style={{ padding: "34px 34px 38px" }}>
-
-          {/* Type de veille */}
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".14em", color: "#B8A898", marginBottom: 12, textTransform: "uppercase" }}>Type de veille</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
@@ -355,7 +376,6 @@ ${(report.sources || []).join("\n")}`;
             </div>
           </div>
 
-          {/* Secteur */}
           <div style={{ marginBottom: 18 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".14em", color: "#B8A898", marginBottom: 8, textTransform: "uppercase" }}>Secteur d'activité</div>
             <select className="czv-sel" value={form.secteur} onChange={e => sf("secteur", e.target.value)}>
@@ -363,7 +383,6 @@ ${(report.sources || []).join("\n")}`;
             </select>
           </div>
 
-          {/* Période */}
           <div style={{ marginBottom: 28 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".14em", color: "#B8A898", marginBottom: 8, textTransform: "uppercase" }}>Période</div>
             <div style={{ display: "flex", gap: 8 }}>
