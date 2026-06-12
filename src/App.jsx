@@ -91,10 +91,11 @@ const PERIODES = [
 
 // ── SYSTEM PROMPT ────────────────────────────────────────────────
 const buildSystem = () => `Tu es l'Agent Veille de CapZeniths, cabinet spécialisé en prévention défaillance business pour dirigeants TPE/PME français.
-Effectue une recherche web pour trouver les données les plus récentes disponibles.
+Tu n'as pas accès à internet. Utilise tes connaissances internes pour fournir des données de référence fiables sur les défaillances d'entreprises en France.
 Priorité : chiffres officiels (Banque de France, INSEE, Altares, CMA, CCI), actualité réglementaire (URSSAF, ACRE, TVA, social).
-Style : factuel, chiffré, direct. Cite les sources et dates.
-RÉPONDS EN JSON VALIDE sans backticks.
+Style : factuel, chiffré, direct. Cite les sources et les années de référence.
+IMPORTANT : Réponds UNIQUEMENT avec un objet JSON valide, sans backticks, sans texte avant ou après.
+Format exact attendu :
 {"date_rapport":"<jj/mm/aaaa>","secteur":"<secteur>","periode":"<période>","chiffres_cles":[{"label":"","valeur":"","source":"","tendance":"hausse|baisse|stable"}],"alertes":[{"type":"CRITIQUE|IMPORTANT|INFO","titre":"","description":""}],"tendances":["<tendance 1>","<tendance 2>","<tendance 3>"],"opportunites_capzeniths":["<profil prospect à cibler>","<profil prospect>"],"synthese":"<2-3 phrases directes actionnables>","sources":["<source + date>"]}`;
 
 // ── COULEURS ALERTE ──────────────────────────────────────────────
@@ -106,6 +107,20 @@ const alertStyle = (type) => ({
 
 const tendColor = (t) => t === "hausse" ? "#EF4444" : t === "baisse" ? "#10B981" : "#F59E0B";
 const tendIcon = (t) => t === "hausse" ? "↗" : t === "baisse" ? "↘" : "→";
+
+// ── PARSE JSON ROBUSTE ───────────────────────────────────────────
+const parseJSON = (raw) => {
+  // 1. Supprimer les blocs ```json ... ``` ou ``` ... ```
+  let cleaned = raw.replace(/```json[\s\S]*?```/g, m => m.slice(7, -3).trim());
+  cleaned = cleaned.replace(/```[\s\S]*?```/g, m => m.slice(3, -3).trim());
+  cleaned = cleaned.trim();
+
+  // 2. Extraire le premier objet JSON trouvé
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Aucun JSON trouvé dans la réponse");
+
+  return JSON.parse(match[0]);
+};
 
 // ── COMPOSANT PRINCIPAL ──────────────────────────────────────────
 export default function AgentVeille() {
@@ -147,8 +162,8 @@ export default function AgentVeille() {
       const periodeLabel = PERIODES.find(p => p.id === form.periode)?.label;
 
       const query = `Effectue une veille "${typeLabel}" pour le secteur "${secteurLabel}" en France sur la période "${periodeLabel}".
-Recherche : chiffres défaillances entreprises TPE/PME, tendances, alertes réglementaires récentes, données Banque de France / INSEE / Altares.
-Génère le rapport JSON structuré avec données chiffrées actuelles.`;
+Données attendues : chiffres défaillances entreprises TPE/PME, tendances, alertes réglementaires récentes, données Banque de France / INSEE / Altares.
+Génère le rapport JSON structuré avec données chiffrées. Réponds UNIQUEMENT avec le JSON, sans aucun texte avant ou après.`;
 
       const res = await fetch("/api/veille", {
         method: "POST",
@@ -159,16 +174,31 @@ Génère le rapport JSON structuré avec données chiffrées actuelles.`;
         }),
       });
 
-      const data = await res.json();
-      clearInterval(iv); setLoadPct(100);
+      // FIX 1 : Vérifier le statut HTTP avant de parser
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(`Erreur serveur ${res.status} : ${errData.error || 'Réponse inattendue'}`);
+      }
 
-      const raw = (data.content || [])
+      const data = await res.json();
+
+      // FIX 2 : Vérifier que data.content existe
+      if (!data.content || !Array.isArray(data.content)) {
+        throw new Error(`Réponse API invalide : ${JSON.stringify(data).slice(0, 120)}`);
+      }
+
+      const raw = data.content
         .map(b => b.type === "text" ? b.text : "")
         .filter(Boolean)
         .join("");
 
-      const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      if (!raw) throw new Error("Réponse vide de l'API");
+
+      // FIX 3 : Parse JSON robuste
+      const parsed = parseJSON(raw);
       setReport(parsed);
+      clearInterval(iv);
+      setLoadPct(100);
 
       // SYNC SUPABASE
       const alertes = parsed.alertes || [];
@@ -187,7 +217,9 @@ Génère le rapport JSON structuré avec données chiffrées actuelles.`;
 
     } catch (e) {
       clearInterval(iv);
-      setErr("Erreur lors de la recherche. Réessaie.");
+      // FIX 4 : Afficher le vrai message d'erreur
+      console.error("Erreur Agent Veille:", e);
+      setErr(`Erreur : ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -357,7 +389,7 @@ ${(report.sources || []).join("\n")}`;
             <span style={{ fontStyle: "italic", color: "rgba(245,166,35,.75)" }}>& tendances sectorielles</span>
           </div>
           <div className="czv-up2" style={{ fontSize: 14, color: "rgba(240,232,252,.5)", maxWidth: 460, lineHeight: 1.75 }}>
-            Données en temps réel — défaillances TPE/PME, tendances sectorielles, alertes réglementaires.
+            Données de référence — défaillances TPE/PME, tendances sectorielles, alertes réglementaires.
           </div>
         </div>
       </div>
@@ -394,7 +426,11 @@ ${(report.sources || []).join("\n")}`;
             </div>
           </div>
 
-          {err && <div style={{ fontSize: 13, color: "#991B1B", marginBottom: 16, padding: "10px 15px", background: "#FEE2E2", borderRadius: 10 }}>⚠️ {err}</div>}
+          {err && (
+            <div style={{ fontSize: 13, color: "#991B1B", marginBottom: 16, padding: "10px 15px", background: "#FEE2E2", borderRadius: 10 }}>
+              ⚠️ {err}
+            </div>
+          )}
 
           <button className="czv-btn" onClick={launch}>
             → Lancer la veille {typ?.label.split(" ")[0]} · {sec?.label.split(" ").slice(1).join(" ")}
