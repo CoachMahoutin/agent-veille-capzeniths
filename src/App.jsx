@@ -193,15 +193,15 @@ Réponds UNIQUEMENT avec le JSON, sans aucun texte avant ou après.`;
       const niveauMax = alertes.some(a => a.type === 'CRITIQUE') ? 'CRITIQUE'
         : alertes.some(a => a.type === 'IMPORTANT') ? 'IMPORTANT' : 'INFO';
       await syncToSupabase('veilles', {
-        type_veille:   form.type,
-        secteur:       secteurLabel || form.secteur,
-        periode:       periodeLabel || form.periode,
-        chiffres_cles: JSON.stringify(parsed.chiffres_cles || []),
-        alertes:       JSON.stringify(alertes),
-        tendances:     (parsed.tendances || []).join(' | '),
-        opportunites:  (parsed.opportunites_capzeniths || []).join(' | '),
-        niveau_alerte: niveauMax,
-      }, 'veille');
+  type_veille:   form.type || 'complete',
+  secteur:       secteurLabel || form.secteur || 'general',
+  periode:       periodeLabel || form.periode || 'trimestre',
+  chiffres_cles: JSON.stringify(parsed.chiffres_cles || []),
+  alertes:       JSON.stringify(alertes),
+  tendances:     (parsed.tendances || []).join(' | '),
+  opportunites:  (parsed.opportunites_capzeniths || []).join(' | '),
+  niveau_alerte: niveauMax || 'INFO',
+}, 'veille');
 
     } catch (e) {
       clearInterval(iv);
