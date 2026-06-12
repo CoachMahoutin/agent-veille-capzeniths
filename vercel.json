@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/veille.js": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
   }
 }
