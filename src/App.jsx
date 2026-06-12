@@ -25,8 +25,6 @@ const injectStyles = () => {
     .czv-type-opt:hover{border-color:#F5A623;color:#F5A623;}
     .czv-type-opt.sel{border-color:#F5A623;background:#F5A623;color:#2D0A3E;font-weight:700;}
     @keyframes czvUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-    @keyframes czvSpin{to{transform:rotate(360deg)}}
-    @keyframes czvPulse{0%,100%{opacity:.5}50%{opacity:1}}
     .czv-up{animation:czvUp .4s ease forwards;}
     .czv-up1{animation:czvUp .4s .1s ease both;}
     .czv-up2{animation:czvUp .4s .2s ease both;}
@@ -90,13 +88,21 @@ const PERIODES = [
 ];
 
 // ── SYSTEM PROMPT ────────────────────────────────────────────────
-const buildSystem = () => `Tu es l'Agent Veille de CapZeniths, cabinet spécialisé en prévention défaillance business pour dirigeants TPE/PME français.
-Tu n'as pas accès à internet. Utilise tes connaissances internes pour fournir des données de référence fiables sur les défaillances d'entreprises en France.
-Priorité : chiffres officiels (Banque de France, INSEE, Altares, CMA, CCI), actualité réglementaire (URSSAF, ACRE, TVA, social).
-Style : factuel, chiffré, direct. Cite les sources et les années de référence.
-IMPORTANT : Réponds UNIQUEMENT avec un objet JSON valide, sans backticks, sans texte avant ou après.
-Format exact attendu :
-{"date_rapport":"<jj/mm/aaaa>","secteur":"<secteur>","periode":"<période>","chiffres_cles":[{"label":"","valeur":"","source":"","tendance":"hausse|baisse|stable"}],"alertes":[{"type":"CRITIQUE|IMPORTANT|INFO","titre":"","description":""}],"tendances":["<tendance 1>","<tendance 2>","<tendance 3>"],"opportunites_capzeniths":["<profil prospect à cibler>","<profil prospect>"],"synthese":"<2-3 phrases directes actionnables>","sources":["<source + date>"]}`;
+const buildSystem = () => `Tu es l'Agent Veille de CapZeniths, cabinet de prévention défaillance business pour TPE/PME français.
+Utilise tes connaissances internes. Sois concis et factuel. Maximum 4 éléments par tableau.
+Réponds UNIQUEMENT avec un objet JSON valide, sans backticks, sans texte avant ou après.
+Format strict :
+{"date_rapport":"<jj/mm/aaaa>","secteur":"<secteur>","periode":"<période>","chiffres_cles":[{"label":"","valeur":"","source":"","tendance":"hausse|baisse|stable"}],"alertes":[{"type":"CRITIQUE|IMPORTANT|INFO","titre":"","description":""}],"tendances":["<tendance 1>","<tendance 2>","<tendance 3>"],"opportunites_capzeniths":["<profil 1>","<profil 2>"],"synthese":"<2 phrases max>","sources":["<source + année>"]}`;
+
+// ── PARSE JSON ROBUSTE ───────────────────────────────────────────
+const parseJSON = (raw) => {
+  let cleaned = raw.replace(/```json[\s\S]*?```/g, m => m.slice(7, -3).trim());
+  cleaned = cleaned.replace(/```[\s\S]*?```/g, m => m.slice(3, -3).trim());
+  cleaned = cleaned.trim();
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Aucun JSON trouvé dans la réponse");
+  return JSON.parse(match[0]);
+};
 
 // ── COULEURS ALERTE ──────────────────────────────────────────────
 const alertStyle = (type) => ({
@@ -107,20 +113,6 @@ const alertStyle = (type) => ({
 
 const tendColor = (t) => t === "hausse" ? "#EF4444" : t === "baisse" ? "#10B981" : "#F59E0B";
 const tendIcon = (t) => t === "hausse" ? "↗" : t === "baisse" ? "↘" : "→";
-
-// ── PARSE JSON ROBUSTE ───────────────────────────────────────────
-const parseJSON = (raw) => {
-  // 1. Supprimer les blocs ```json ... ``` ou ``` ... ```
-  let cleaned = raw.replace(/```json[\s\S]*?```/g, m => m.slice(7, -3).trim());
-  cleaned = cleaned.replace(/```[\s\S]*?```/g, m => m.slice(3, -3).trim());
-  cleaned = cleaned.trim();
-
-  // 2. Extraire le premier objet JSON trouvé
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("Aucun JSON trouvé dans la réponse");
-
-  return JSON.parse(match[0]);
-};
 
 // ── COMPOSANT PRINCIPAL ──────────────────────────────────────────
 export default function AgentVeille() {
@@ -137,7 +129,6 @@ export default function AgentVeille() {
   const sf = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const sec = SECTEURS.find(s => s.id === form.secteur);
   const typ = TYPES.find(t => t.id === form.type);
-  const per = PERIODES.find(p => p.id === form.periode);
 
   const MSGS = [
     "Connexion aux sources de données…",
@@ -148,7 +139,7 @@ export default function AgentVeille() {
   ];
 
   const launch = async () => {
-    setErr(""); setLoading(true); setLoadPct(8);
+    setErr(""); setReport(null); setLoading(true); setLoadPct(8);
     let mi = 0; setLoadMsg(MSGS[0]);
     const iv = setInterval(() => {
       mi = Math.min(mi + 1, MSGS.length - 1);
@@ -161,9 +152,9 @@ export default function AgentVeille() {
       const typeLabel = TYPES.find(t => t.id === form.type)?.label.replace(/^\S+\s/, "");
       const periodeLabel = PERIODES.find(p => p.id === form.periode)?.label;
 
-      const query = `Effectue une veille "${typeLabel}" pour le secteur "${secteurLabel}" en France sur la période "${periodeLabel}".
-Données attendues : chiffres défaillances entreprises TPE/PME, tendances, alertes réglementaires récentes, données Banque de France / INSEE / Altares.
-Génère le rapport JSON structuré avec données chiffrées. Réponds UNIQUEMENT avec le JSON, sans aucun texte avant ou après.`;
+      const query = `Veille "${typeLabel}" pour le secteur "${secteurLabel}" en France, période "${periodeLabel}".
+Fournis : chiffres défaillances TPE/PME, tendances, alertes réglementaires. Maximum 4 éléments par tableau.
+Réponds UNIQUEMENT avec le JSON, sans aucun texte avant ou après.`;
 
       const res = await fetch("/api/veille", {
         method: "POST",
@@ -174,7 +165,6 @@ Génère le rapport JSON structuré avec données chiffrées. Réponds UNIQUEMEN
         }),
       });
 
-      // FIX 1 : Vérifier le statut HTTP avant de parser
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(`Erreur serveur ${res.status} : ${errData.error || 'Réponse inattendue'}`);
@@ -182,7 +172,6 @@ Génère le rapport JSON structuré avec données chiffrées. Réponds UNIQUEMEN
 
       const data = await res.json();
 
-      // FIX 2 : Vérifier que data.content existe
       if (!data.content || !Array.isArray(data.content)) {
         throw new Error(`Réponse API invalide : ${JSON.stringify(data).slice(0, 120)}`);
       }
@@ -194,11 +183,10 @@ Génère le rapport JSON structuré avec données chiffrées. Réponds UNIQUEMEN
 
       if (!raw) throw new Error("Réponse vide de l'API");
 
-      // FIX 3 : Parse JSON robuste
       const parsed = parseJSON(raw);
-      setReport(parsed);
       clearInterval(iv);
       setLoadPct(100);
+      setReport(parsed);
 
       // SYNC SUPABASE
       const alertes = parsed.alertes || [];
@@ -217,7 +205,6 @@ Génère le rapport JSON structuré avec données chiffrées. Réponds UNIQUEMEN
 
     } catch (e) {
       clearInterval(iv);
-      // FIX 4 : Afficher le vrai message d'erreur
       console.error("Erreur Agent Veille:", e);
       setErr(`Erreur : ${e.message}`);
     } finally {
@@ -396,6 +383,7 @@ ${(report.sources || []).join("\n")}`;
 
       <div style={{ maxWidth: 680, margin: "-26px auto 0", padding: "0 20px 56px", position: "relative", zIndex: 1 }}>
         <div className="czv-card czv-up3" style={{ padding: "34px 34px 38px" }}>
+
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".14em", color: "#B8A898", marginBottom: 12, textTransform: "uppercase" }}>Type de veille</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
