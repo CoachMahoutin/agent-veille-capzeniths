@@ -36,7 +36,7 @@ const injectStyles = () => {
 
 // ── SYNC SUPABASE ────────────────────────────────────────────────
 const SUPABASE_URL = 'https://dtvzchtqbfomhneroudk.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0dnpjaHRxYmZvbWhuZXJvdWRrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NjY0NjgyMSwiZXhwIjoyMDYyMjIyODIxfQ.YP6DLancRm7F1ukCwbVBRnqf6vG0zOcNaYLxYdEirKU';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0dnpjaHRxYmZvbWhuZXJvdWRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyMTM2ODMsImV4cCI6MjA5NTc4OTY4M30.rYbJ1KEAvraywUTZzh2Xae2onUaCajsizVSXo_8hQTA';
 
 const syncToSupabase = async (table, data) => {
   try {
