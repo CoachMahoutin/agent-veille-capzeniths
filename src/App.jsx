@@ -35,15 +35,29 @@ const injectStyles = () => {
 };
 
 // ── SYNC SUPABASE ────────────────────────────────────────────────
-const syncToSupabase = async (table, data, agent) => {
+const SUPABASE_URL = 'https://dtvzchtqbfomhneroudk.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0dnpjaHRxYmZvbWhuZXJvdWRrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NjY0NjgyMSwiZXhwIjoyMDYyMjIyODIxfQ.YP6DLancRm7F1ukCwbVBRnqf6vG0zOcNaYLxYdEirKU';
+
+const syncToSupabase = async (table, data) => {
   try {
-    await fetch('/api/sync', {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ table, action: 'insert', data, agent }),
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Prefer': 'return=representation',
+      },
+      body: JSON.stringify([data]),
     });
+    const result = await res.json();
+    if (!res.ok) {
+      console.error('Sync Supabase erreur:', result);
+    } else {
+      console.log('Sync Supabase OK:', result);
+    }
   } catch (e) {
-    console.warn('Sync Supabase échouée:', e.message);
+    console.error('Sync Supabase échouée:', e.message);
   }
 };
 
@@ -193,15 +207,15 @@ Réponds UNIQUEMENT avec le JSON, sans aucun texte avant ou après.`;
       const niveauMax = alertes.some(a => a.type === 'CRITIQUE') ? 'CRITIQUE'
         : alertes.some(a => a.type === 'IMPORTANT') ? 'IMPORTANT' : 'INFO';
       await syncToSupabase('veilles', {
-  type_veille:   form.type || 'complete',
-  secteur:       secteurLabel || form.secteur || 'general',
-  periode:       periodeLabel || form.periode || 'trimestre',
-  chiffres_cles: JSON.stringify(parsed.chiffres_cles || []),
-  alertes:       JSON.stringify(alertes),
-  tendances:     (parsed.tendances || []).join(' | '),
-  opportunites:  (parsed.opportunites_capzeniths || []).join(' | '),
-  niveau_alerte: niveauMax || 'INFO',
-}, 'veille');
+        type_veille:   form.type || 'complete',
+        secteur:       secteurLabel || form.secteur || 'general',
+        periode:       periodeLabel || form.periode || 'trimestre',
+        chiffres_cles: JSON.stringify(parsed.chiffres_cles || []),
+        alertes:       JSON.stringify(alertes),
+        tendances:     (parsed.tendances || []).join(' | '),
+        opportunites:  (parsed.opportunites_capzeniths || []).join(' | '),
+        niveau_alerte: niveauMax || 'INFO',
+      }, 'veille');
 
     } catch (e) {
       clearInterval(iv);
